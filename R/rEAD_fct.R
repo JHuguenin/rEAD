@@ -63,7 +63,8 @@ NULL
 #' # gcead <- import.GC.EAD(file_csv = "data/sbe18.csv", num = 1, delay = 0, FID_calibration = "data/sbe21_FID2.csv")
 #' # gcead <- print.GCEAD()
 import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
-                          skip_time = 6, FID_calibration = NULL, param = c(40,7,20,7)){
+                          skip_time = 6, FID_calibration = NULL, param = c(40,7,20,7),
+                          skip_pk_cal_GCEAD = NA, skip_pk_cal_FID = NA){
   # check ####
   if(is.null(wd) == TRUE) wd <- getwd()
   if (!is.character(wd)) stop("'wd' must be character")
@@ -78,15 +79,27 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   if (!is.character(FID_calibration)) stop("'FID_calibration' must be character")
   if (!file.exists(FID_calibration)) stop("FID calibration file doesn't exist")
   if (str_ends(file_csv,"EAD.csv")) title_file <- str_remove(file_csv,"_EAD.csv")
+  if (!is.numeric(skip_pk_cal_GCEAD)) if(!is.na(skip_pk_cal_GCEAD)) stop("'skip_pk_cal_GCEAD' must be a integer (length(1)) or NA")
+  if (!is.numeric(skip_pk_cal_FID)) if(!is.na(skip_pk_cal_FID)) stop("'skip_pk_cal_FID' must be a integer (length(1)) or NA")
 
   # import GC-EAD ####
   gcead <- read.csv(paste0(wd,"/",file_csv))[,(3*num):(3*num+1)]
   colnames(gcead) <- c("EAD","FID")
   nrG <- nrow(gcead)
-  if(delay >= 0) gcead$EAD[(delay+1):nrG] <- gcead$EAD[1:(nrG-delay)]
-  if(delay < 0)  gcead$EAD[1:(nrG+delay)] <- gcead$EAD[(1-delay):nrG]
+
+  # modify delay
+  if(delay > 0) gcead$EAD[(delay+1):nrG] <- gcead$EAD[1:(nrG-delay)]
+  if(delay < 0) gcead$EAD[1:(nrG+delay)] <- gcead$EAD[(1-delay):nrG]
+
+  # corrected by the median
+  if(median(gcead$FID) <0) gcead$FID <- gcead$FID + abs(median(gcead$FID))*1.2
+
+  # corrected the saturation windows
+  fmr <- which(gcead$FID <0)
+  ind_sat <- unique(c(fmr,fmr-20, fmr+20)) %>% sort()
   gcead$FID[which(gcead$FID <0)] <- max(gcead$FID)*0.99
 
+  # scale EAD and FID
   gcead <- scale(gcead) %>% as.data.frame()
 
   # import FID calibration ####
@@ -104,22 +117,35 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   vGn <- gcead$FID[xEad]
   vG <- vGn - min(vGn)
   pkGC <- createMassSpectrum(1:length(vG), vG)
-  pkGC <- detectPeaks(pkGC, halfWindowSize = 40, method = "MAD", SNR = 7)
+  pkGC <- detectPeaks(pkGC, halfWindowSize = param[1], method = "MAD", SNR = param[2])
 
-  maxPK <- which(pkGC@intensity > max(gcead$FID)*0.98)
-  n_pk_skip <- round(length(maxPK)/2,0)
-  if (n_pk_skip>0){
-    maxPK <- maxPK[maxPK %in% (maxPK+1)]
+  if(is.na(skip_pk_cal_GCEAD)){
+    maxPK <- which(pkGC@mass %in% (ind_sat-xEad[1]))
+    n_skip <- 0
+  }
+  if(!is.na(skip_pk_cal_GCEAD)){
+    maxPK <- 0
+    n_skip <- skip_pk_cal_GCEAD
+  }
+
+  if(length(maxPK)>0){
     pkGC <- data.frame(mass = pkGC@mass[-maxPK],intensity =  pkGC@intensity[-maxPK])
   } else {
     pkGC <- data.frame(mass = pkGC@mass,intensity =  pkGC@intensity)
   }
-  top_pkG <- sort(pkGC$intensity,decreasing = TRUE)[(1:5)+n_pk_skip] %>% match(pkGC$intensity)
+  top_pkG <- sort(pkGC$intensity,decreasing = TRUE)[(1:5)+n_skip] %>% match(pkGC$intensity)
+
 
   # find top five peaks FID ####
+  if(!is.na(skip_pk_cal_FID)) n_skip <- skip_pk_cal_FID
+  if(is.na(skip_pk_cal_FID)){
+    if(is.na(skip_pk_cal_GCEAD)) n_skip <- length(maxPK) %>% divide_by(2) %>% ceiling()
+    if(!is.na(skip_pk_cal_GCEAD)) n_skip <- skip_pk_cal_GCEAD
+  }
+
   pkFID <- createMassSpectrum(1:length(vF), vF)
-  pkFID <- detectPeaks(pkFID, halfWindowSize = 20, method = "MAD", SNR = 7)
-  top_pkF <- sort(pkFID@intensity,decreasing = TRUE)[(1:5)+n_pk_skip] %>% match(pkFID@intensity)
+  pkFID <- detectPeaks(pkFID, halfWindowSize = param[3], method = "MAD", SNR = param[4])
+  top_pkF <- sort(pkFID@intensity,decreasing = TRUE)[(1:5)+n_skip] %>% match(pkFID@intensity)
 
   # calibration phase ####
   cal <- data.frame(time = fid$time[(nrF/3-1)+pkFID@mass[top_pkF]],
@@ -134,8 +160,8 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   fmr <- fmr[length(fmr)]
 
   tiff(paste0(wd,"/figures/", fmr,"n",num,".tiff"), width = 600, height = 900, units = "px", res=NA)
-  par(mfrow=c(3,1), oma = c(0,0,2,0), mar = c(3,3,2,0), mgp = c(2,0.5,0),
-      cex = 1.5)
+   par(mfrow=c(3,1), oma = c(0,0,2,0), mar = c(3,3,2,0), mgp = c(2,0.5,0),
+       cex = 1.5)
   matplot(fid$time[xFid],vF, type ="l",main = "calibrated FID",
           xlab = "time (min)", ylab = "intensity (u.a.)")
   points(fid$time[(lowlimF-1)+pkFID@mass[top_pkF]],pkFID@intensity[top_pkF],

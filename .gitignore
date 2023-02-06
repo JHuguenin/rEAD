@@ -3,7 +3,7 @@
 .RData
 .Ruserdata
 .Rbuildignore
-rEAD.Rproj
 .Rdata
 .httr-oauth
 .DS_Store
+inst\data
