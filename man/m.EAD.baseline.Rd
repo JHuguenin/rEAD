@@ -4,10 +4,12 @@
 \alias{m.EAD.baseline}
 \title{delete multi-EAD baseline}
 \usage{
-m.EAD.baseline(cr_shift = -0.1, pk_mat = list_ead)
+m.EAD.baseline(cr_shift = -0.1, double_baseline = FALSE, pk_mat = list_ead)
 }
 \arguments{
 \item{cr_shift}{for shift the EAD signals}
+
+\item{double_baseline}{make a second subtraction of baseline}
 
 \item{pk_mat}{a mead object}
 }

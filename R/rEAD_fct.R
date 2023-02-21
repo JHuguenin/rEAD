@@ -21,6 +21,8 @@
 #' @importFrom magrittr subtract
 #' @importFrom MALDIquant createMassSpectrum
 #' @importFrom MALDIquant detectPeaks
+#' @importFrom plotly add_trace
+#' @importFrom plotly plot_ly
 #' @importFrom pracma savgol
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom readr read_delim
@@ -36,12 +38,12 @@ NULL
 # library(baseline)
 # library(magrittr)
 # library(MALDIquant)
+# library(plotly)
 # library(pracma)
 # library(RColorBrewer)
 # library(readr)
 # library(stats)
 # library(stringr)
-
 
 # 01 Import ####
 
@@ -54,6 +56,10 @@ NULL
 #' @param skip_time delete x firsts minutes (X = number of minutes)
 #' @param FID_calibration calibration file
 #' @param param parameters of EAD HalfWindowsSize, EAD SNR, FID HalfWindowsSize and FID SNR
+#' @param skip_pk_cal_GCEAD numeric. Skip peak, higher in first, during the calibration phase.
+#' @param skip_pk_cal_FID numeric. Skip peak, higher in first, during the calibration phase.
+#' @param save_fid_cal logical. Save the plot html of calibration transfert from FID to syntech format
+#' @param FID_cal numeric. Value depend of window width filter for calibration transfert
 #'
 #' @return a gcead object with spectra and metadata
 #' @export
@@ -64,7 +70,8 @@ NULL
 #' # gcead <- print.GCEAD()
 import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
                           skip_time = 6, FID_calibration = NULL, param = c(40,7,20,7),
-                          skip_pk_cal_GCEAD = NA, skip_pk_cal_FID = NA){
+                          skip_pk_cal_GCEAD = NA, skip_pk_cal_FID = NA,
+                          save_fid_cal = TRUE, FID_cal = -10^6){
   # check ####
   if(is.null(wd) == TRUE) wd <- getwd()
   if (!is.character(wd)) stop("'wd' must be character")
@@ -135,7 +142,6 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   }
   top_pkG <- sort(pkGC$intensity,decreasing = TRUE)[(1:5)+n_skip] %>% match(pkGC$intensity)
 
-
   # find top five peaks FID ####
   if(!is.na(skip_pk_cal_FID)) n_skip <- skip_pk_cal_FID
   if(is.na(skip_pk_cal_FID)){
@@ -157,9 +163,9 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
 
   # export figure control ####
   fmr <- str_split(title_file,pattern = "/")[[1]]
-  fmr <- fmr[length(fmr)]
+  title_nm <- fmr[length(fmr)]
 
-  tiff(paste0(wd,"/figures/", fmr,"n",num,".tiff"), width = 600, height = 900, units = "px", res=NA)
+  tiff(paste0(wd,"/figures/", title_nm,"n",num,".tiff"), width = 600, height = 900, units = "px", res=NA)
    par(mfrow=c(3,1), oma = c(0,0,2,0), mar = c(3,3,2,0), mgp = c(2,0.5,0),
        cex = 1.5)
   matplot(fid$time[xFid],vF, type ="l",main = "calibrated FID",
@@ -180,16 +186,61 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
          pch=16,col="green")
   dev.off()
 
-  # happy end
-  fmr <- min(nrow(pkGC),length(pkFID@mass),10)
-  cal_use <- c(rep(FALSE, n_pk_skip), rep(TRUE, nrow(pkGC)-n_pk_skip))[1:fmr]
+  # FID calibration transfert ####
 
-  dec_ead <- order(pkGC$intensity,decreasing = TRUE)[1:fmr]
-  dec_fid <- order(pkFID@intensity,decreasing = TRUE)[1:fmr]
+  ## a filter centered on L0, and with a FWHM of B is given by:
+  ##     y/ymax = exp( -4*ln(2)*( (L-L0)/B )^2 )
+  ##     FID_cal = -4*ln(2) / B^2
 
-  pk_res <- data.frame(EADmass = pkGC$mass[dec_ead], EAD_int = pkGC$intensity[dec_ead],
-                       FIDmass = pkFID@mass[dec_fid], FID_int = pkFID@intensity[dec_fid],
-                       pk_time = fid$time[(nrF/3-1)+pkFID@mass[dec_fid]], cal_use = cal_use)
+  # initialize vector
+  X0 <- gcead$time * 0
+  rt <- fid$time[xFid]
+
+  # detect limit
+  zi <- range(rt) %>% sapply(fit.exact.value,gcead$time) %>% sapply(match,gcead$time)
+
+  # calculate filter :
+  for(i in zi[1]:zi[2]){
+    ind <- fit.exact.value(gcead$time[i], rt) %>% sapply(match,rt) # index of rt signal
+    X <- subtract(rt,gcead$time[i]) # centred
+    X <- exp(FID_cal*X^2) * vF # gaussian windows applied on signal
+    X0[i] <- sum(X) # value
+  }
+  X0 <- X0 * max(vF)/max(X0) # normalized
+
+  if(save_fid_cal == TRUE){
+    df_cal <- data.frame(rt, vF)
+    df_fid <- data.frame(rt2 = gcead$time, fid = X0)
+
+    fig <- plot_ly(df_cal, x = ~rt, y = ~vF, type = 'scatter', mode = 'lines', name = "FID cal")
+    fig <- fig %>% add_trace(data = df_fid, x = ~rt2, y = ~fid, mode = 'lines', name = "FID flt")
+
+    htmlwidgets::saveWidget(fig, paste0(wd,"/figures/options_graph_dy.html"), selfcontained = TRUE)
+    file.rename(from = paste0(wd,"/figures/options_graph_dy.html"),
+                to = paste0(wd,"/figures/",title_nm,".html"))
+  }
+
+  # scale new FID
+  X0 <- scale(X0)
+  gcead$FID <- as.numeric(X0) - min(X0)
+
+  # recalc peaks
+  pkGC <- createMassSpectrum(1:nrG, gcead$FID)
+  pkGC <- detectPeaks(pkGC, halfWindowSize = param[3], method = "MAD", SNR = param[4])
+  pkGC <- data.frame(mass = pkGC@mass,intensity =  pkGC@intensity)
+
+  # happy end ####
+  cal_use <- rep(TRUE,10)
+  cal_use[1:n_skip] <- FALSE
+  dec_ead <- order(pkGC$intensity,decreasing = TRUE)  %>% head(10)
+  dec_fid <- order(pkFID@intensity,decreasing = TRUE) %>% head(10)
+
+  pk_res <- data.frame(EADmass = pkGC$mass[dec_ead],
+                       EAD_int = pkGC$intensity[dec_ead],
+                       FIDmass = pkFID@mass[dec_fid],
+                       FID_int = pkFID@intensity[dec_fid],
+                       pk_time = fid$time[(nrF/3-1)+pkFID@mass[dec_fid]],
+                       cal_use = cal_use)
 
   return(new(Class = "gcead", GC_EAD = gcead,
                               delay = delay,
@@ -262,30 +313,53 @@ gcead.graph <- function(pk_mat = gc_ead){
 #' print mead object
 #'
 #' @param pk_mat a mead object with spectra and metadata
-#' @param view_all logical. Add raw EAD if TRUE
+#' @param view_raw logical. Add raw EAD if TRUE
 #' @param save_htlm logical. save the graphe in 'Figures' folder
+#' @param view_snr logical. view the SNR (signal noise ratio) associted with mean or median.
+#' @param view_selection characters. Selected samples or treatments. Argument can be unique (="all") or multiple (= c("mean","median")).
+#' @param prefixe characters. A prefixe for the title
 #'
 #' @return a dynamic graph
 #' @export
 #'
 #' @examples
 #' # list_ead <- gcead.graph(list_ead)
-mead.graph <- function(pk_mat = list_ead, view_all = TRUE, save_htlm = FALSE){
+mead.graph <- function(pk_mat = list_ead, view_raw = TRUE, view_selection = c("all"),
+                       view_snr = FALSE, save_htlm = FALSE, prefixe = ""){
 
   # check ####
   if (class(pk_mat)[1] != "mead") stop("'pk_mat' must be a mead S4 object")
-  if (!is.logical(view_all)) stop("'view_all' must be a logical")
+  if (!is.logical(view_raw)) stop("'view_raw' must be a logical")
+  if (!is.logical(view_snr)) stop("'view_snr' must be a logical")
+  if ((view_raw == TRUE)&(view_snr == TRUE)) stop("'view_raw' and 'view_snr' can't be TRUE in same time")
   if (!is.logical(save_htlm)) stop("'save_htlm' must be a logical")
+  if (!is.character(view_selection[1])) stop("'view_selection' must be a character")
+  if (!is.character(prefixe)) stop("'prefixe' must be a character")
   if(("figures" %in% dir(pk_mat@wd))==FALSE) dir.create(paste0(pk_mat@wd,"/figures"))
+  view_selection <- str_replace(view_selection, "mean","ave")
+  view_selection <- str_replace(view_selection, "average","ave")
+  view_selection <- str_replace(view_selection, "median","med")
+
+  # delete unuses SNR
+  if(view_snr == FALSE){ # supprime tous snr de cr_EAD
+    fmr <- grep("snr",names(pk_mat@cr_EAD))
+    if(length(fmr) >0) pk_mat@cr_EAD <- pk_mat@cr_EAD[,-fmr]
+  }
+
+  if((view_snr == TRUE) & view_selection[1] != "all"){
+    fmr <- sapply(view_selection, grep, names(pk_mat@cr_EAD)) %>% unlist()
+    fmr <- grep("snr",names(pk_mat@cr_EAD)) %>% setdiff(fmr)
+    if(length(fmr) >0) pk_mat@cr_EAD <- pk_mat@cr_EAD[,-fmr]
+  } # supprime ceux non selection
 
   # color init ####
-  ns <- ncol(pk_mat@EAD)
+  ns <- max(ncol(pk_mat@EAD),ncol(pk_mat@cr_EAD))
   col_init <- c(brewer.pal(7,name = "Dark2"),brewer.pal(8,name = "Set1")[-6],brewer.pal(7,name = "Accent")[-4])
   col_init <- divide_by(ns,20) %>% ceiling() %>% rep(col_init,.)
 
   # initiation
   if(ncol(pk_mat@bl_EAD) == 0){
-    if (view_all == FALSE) stop("'view_all' can't is FALSE whithout EAD corrected")
+    if (view_raw == FALSE) stop("'view_raw' can't is FALSE whithout EAD corrected")
     dy_df <- data.frame(time = pk_mat@time, FID = pk_mat@FID, pk = pk_mat@pk_windows) %>%
               cbind(pk_mat@EAD)
     col <- c(col_init[1:ns],brewer.pal(3,name = "Paired")[1:2])
@@ -295,30 +369,66 @@ mead.graph <- function(pk_mat = list_ead, view_all = TRUE, save_htlm = FALSE){
     dy_df <- data.frame(time = pk_mat@time,
                         FID = pk_mat@FID,
                         pk = pk_mat@pk_windows)
-    if(view_all == TRUE){
+    if(view_raw == TRUE){
       dy_df <- cbind(dy_df, pk_mat@EAD, pk_mat@bl_EAD, pk_mat@cr_EAD)
       col <- c(rep(col_init[1:ns],3),brewer.pal(3,name = "Paired")[1:2])
     }
-    if(view_all == FALSE){
+    if(view_raw == FALSE){
       dy_df <- cbind(dy_df, pk_mat@cr_EAD)
       col <- c(col_init[1:ns], brewer.pal(3,name = "Paired")[1:2])
     }
   }
 
-    # le titre
+  # le titre
   title <- str_flatten(pk_mat@name,collapse = ", ")
 
+  # selection
+  if(view_selection[1] != "all"){ # view_selection = c("mean","median")
+    for(i in 1:length(view_selection)) if(length(grep(view_selection[i],names(dy_df)))==0) stop(" 'selection' is uncorrect")
+    fmr <- names(dy_df) %>% str_remove_all("EAD_")
+    if(view_snr == TRUE) view_selection <- paste0("snr_",view_selection) %>% intersect(fmr) %>% c(view_selection,.)
+    keep_that <- sapply(view_selection, match, table = fmr)
+    dy_df <- dy_df[,c(1:3,keep_that)]
+    lc <- length(col)
+    col <- col[c(keep_that, lc-1, lc)]
+  }
+
   # Creation du graphe
+  {
   dyG  <- dygraph(dy_df, main = title) %>%
-    dySeries("FID", label = "FID_signal", strokeWidth = 2) %>%
-    dySeries("pk", label = "FID_peak", strokeWidth = 2) %>%
+    dySeries("FID", label = "FID_signal", strokeWidth = 2, brewer.pal(3,name = "Paired")[1]) %>%
+    dySeries("pk", label = "FID_peak", strokeWidth = 2, brewer.pal(3,name = "Paired")[2]) %>%
     dyAxis("x", label = "Time and mass") %>%
     dyAxis("y", label = "Intensity (a.u.)") %>%
     dyOptions(axisLineColor = "navy", gridLineColor = "lightblue",
               useDataTimezone = FALSE, colors = col, strokeWidth =1) %>%
     dyLegend(show = "onmouseover", hideOnMouseOut = TRUE) %>%
-    dyRangeSelector() %>% dyUnzoom()
+    dyRangeSelector() %>% dyUnzoom() } # initiation
 
+  {
+    # Print SD correctly
+    if(("raw_EAD_sd" %in% dyG$x$attrs$labels) == TRUE){
+      dyG <- dySeries(dyG,"raw_EAD_sd", label = "raw_EAD_sd", strokeWidth = 2, color = "#188935")
+    }
+    if(("EAD_sd" %in% dyG$x$attrs$labels) == TRUE){
+      dyG <- dySeries(dyG,"EAD_sd", label = "EAD_sd", strokeWidth = 2, color = "#188935")
+    }
+    if(("bl_EAD_sd" %in% dyG$x$attrs$labels) == TRUE){
+      dyG <- dySeries(dyG,"bl_EAD_sd", label = "bl_EAD_sd", strokeWidth = 2, color = "#188935")
+    }
+
+    # Print SNR med correctly
+    if(("EAD_snr_med" %in% dyG$x$attrs$labels) == TRUE) dyG <- dySeries(dyG,"EAD_snr_med",
+                                                                        label = "EAD_snr_med",
+                                                                        strokeWidth = 1.5,
+                                                                        color = "#fbb4ae")
+
+    # Print SNR med correctly
+    if(("EAD_snr_ave" %in% dyG$x$attrs$labels) == TRUE) dyG <- dySeries(dyG,"EAD_snr_ave",
+                                                                        label = "EAD_snr_ave",
+                                                                        strokeWidth = 1.5,
+                                                                      color = "#fed9a6")
+    # Print average/mean correctly
     if(("raw_EAD_ave" %in% dyG$x$attrs$labels) == TRUE){
       dyG <- dySeries(dyG,"raw_EAD_ave", label = "raw_EAD_ave", strokeWidth = 3, color = "#1A1A1A")
     }
@@ -328,6 +438,8 @@ mead.graph <- function(pk_mat = list_ead, view_all = TRUE, save_htlm = FALSE){
     if(("bl_EAD_ave" %in% dyG$x$attrs$labels) == TRUE){
       dyG <- dySeries(dyG,"bl_EAD_ave", label = "bl_EAD_ave", strokeWidth = 3, color = "#1A1A1A")
     }
+
+    # Print median correctly
     if(("raw_EAD_med" %in% dyG$x$attrs$labels) == TRUE){
       dyG <- dySeries(dyG,"raw_EAD_med", label = "raw_EAD_med", strokeWidth = 3, color = "#666666")
     }
@@ -338,7 +450,9 @@ mead.graph <- function(pk_mat = list_ead, view_all = TRUE, save_htlm = FALSE){
       dyG <- dySeries(dyG,"bl_EAD_med", label = "bl_EAD_med", strokeWidth = 3, color = "#666666")
     }
 
-  # gestion de l'affiche de pic
+    } # gestion des series
+
+  {
   tooltips <- list()
   for(i in 1:ncol(pk_mat@peak)){
     fmr <- list(list(x = pk_mat@time[pk_mat@peak[1,i]],
@@ -363,17 +477,25 @@ mead.graph <- function(pk_mat = list_ead, view_all = TRUE, save_htlm = FALSE){
                 width: initial !important;
                 font-size: 60% !important;
               }"
+  } # gestion de l'affiche de pic
 
   print(dyG)
 
   if(save_htlm == TRUE){
 
     title <- str_replace_all(title," ","_") %>% str_replace_all(",","_") %>% str_replace_all("__","_")
+    if(prefixe != "") title <- paste0(prefixe,"_",title)
     fmr <- ""
-    if(view_all == TRUE) fmr <- "_full"
-    htmlwidgets::saveWidget(widget = dyG, selfcontained = TRUE,
-                            file =  paste0(pk_mat@wd,"/figures/",title,fmr,"_dyGraph.html"))
-  }
+    if(view_raw == TRUE) fmr <- "_raw"
+    if(view_selection[1] != "all"){
+      if(view_snr == TRUE) view_selection <- view_selection[-grep("snr",view_selection)]
+      fmr <- str_flatten(c("",view_selection),"_") %>% c(fmr) %>% str_flatten()
+    }
+
+    htmlwidgets::saveWidget(dyG, paste0(pk_mat@wd,"/figures/options_graph_dy.html"), selfcontained = TRUE)
+    file.rename(from = paste0(pk_mat@wd,"/figures/options_graph_dy.html"),
+                to = paste0(pk_mat@wd,"/figures/",title,fmr,"_dyGraph.html"))
+  } # save htlm
 
 }
 
@@ -462,6 +584,37 @@ FID.create.peak <- function(bm_inf, bm_sup, pk_mat = gc_ead){
   return(pk_mat)
 }
 
+#' delete FID peak
+#'
+#' @param pk RT of peak
+#' @param pk_mat a mead object
+#'
+#' @return a mead object
+#' @export
+#'
+#' @examples
+#' # list_ead <- FID.delete.peak(pk = 9.74254)
+FID.delete.peak <- function(pk, pk_mat = gc_ead){
+
+  # check ####
+  if (class(pk_mat)[1] != "mead") stop("'pk_mat' must be a mead S4 object")
+  if (!is.numeric(pk)) stop("'pk' must be a numeric")
+
+  # find exact value
+  pk <- names(pk_mat@peak) %>% as.numeric() %>% fit.exact.value(pk,.)
+
+  # find the index
+  ind_pk <- match(pk,names(pk_mat@peak))
+  pk_mat@peak <- pk_mat@peak[,-ind_pk]
+
+  # peak windows
+  pkz <- rep(0,length(pk_mat@time))
+  for (i in 1:ncol(pk_mat@peak)) pkz[pk_mat@peak[2,i]:pk_mat@peak[3,i]] <- pk_mat@FID[pk_mat@peak[1,i]]
+  pk_mat@pk_windows <- pkz
+
+  return(pk_mat)
+}
+
 #' delete FID window. Allows you to delete the start or end of a run
 #'
 #' @param X1 the lower limit or "start" (=T0)
@@ -524,19 +677,27 @@ FID.delete.window <- function(X1 = "start", X2 = "end", pk_mat = list_ead){
 #' @param th_pk_fid threshold of FID peak intensity
 #' @param hws_pk_fid numeric, half window size for MALDIquant::detectPeaks
 #' @param snr_pk_fid single numeric value for MALDIquant::detectPeaks. SNR is an abbreviation for signal-to-noise-ratio. A local maximum has to be higher than SNR*noise to be recognize as peak.
+#' @param gap_FID numeric. Multiplied intensity of FID signal.
 #'
 #' @return
 #' @export
 #'
 #' @examples
 #' # list_test <- gcead.merge(b23, b24, b26, b29, b30, b31, gcead_names = c("b23","b24","b26","b29","b30","b31"))
-gcead.merge <- function(..., gcead_names = FALSE, RT_limits = NULL,
+gcead.merge <- function(..., gcead_names = TRUE, RT_limits = NULL,
                         width_smooth = 125, wm_bl_fid = 400,
                         ws_bl_fid = 10, th_pk_fid = 0.01,
-                        hws_pk_fid = 10, snr_pk_fid = 0.5){
+                        hws_pk_fid = 10, snr_pk_fid = 0.5,
+                        gap_FID = 1){
 
   # merge all
-  list_gcead <- list(...) # list_gcead <- list(b24, b26, b29, b30, b31)
+  # if(typeof(...)[1] == "all"){
+  #   fmr <- which(sapply(ls(), function(x) class(get(x))[1]) == "gcead")
+  #   list_gcead <- lapply(ls()[fmr],get)
+  # }else{
+     list_gcead <- list(...) # list_gcead <- list(a04, a05, a07, a08, a09, a10, a11, a12, a14, a15)
+  # }
+
 
   # check
   sapply(list_gcead, function(X) if (class(X) != "gcead") stop("variables must be a gcead S4 object"))
@@ -547,6 +708,9 @@ gcead.merge <- function(..., gcead_names = FALSE, RT_limits = NULL,
   if (!is.numeric(th_pk_fid)) stop("'th_pk_fid' must be a numeric")
   if (!is.numeric(hws_pk_fid)) stop("'hws_pk_fid' must be a numeric")
   if (!is.numeric(snr_pk_fid)) stop("'snr_pk_fid' must be a numeric")
+  if (!is.numeric(gap_FID)) stop("'gap_FID' must be a single value")
+  if (length(gap_FID) != 1) stop("'gap_FID' must be a single value")
+
   if (!is.null(RT_limits)) if(length(RT_limits)!=2) if(!is.numeric(RT_limits)) stop("'RT_limits' must be either a couple of numeric either null.")
 
   # rename
@@ -570,7 +734,7 @@ gcead.merge <- function(..., gcead_names = FALSE, RT_limits = NULL,
 
   ls_pk <- list()
   lg <- length(list_gcead)
-  align_pk <- matrix(NA,nb_pk_min, 4, dimnames = list(paste0("pk",1:nb_pk_min),c("sd","detect","num","Tmoy")))
+  align_pk <- matrix(NA, nb_pk_min, 4, dimnames = list(paste0("pk",1:nb_pk_min),c("sd","detect","num","Tmoy")))
 
   # Peak by peak
   for (i in 1:nb_pk_min){
@@ -578,15 +742,15 @@ gcead.merge <- function(..., gcead_names = FALSE, RT_limits = NULL,
     rownames(mat_pk) <- c(paste0("pk",i,"_",nm_ls),"mean","median","sd")
     colnames(mat_pk) <- colnames(list_pk[[1]])
     for(j in 1:lg) mat_pk[j,] <- t(list_pk[[j]][i,])
-    mat_pk[lg+1,] <- apply(mat_pk[1:lg,],2, mean)    # calcul des moyennes
-    mat_pk[lg+2,] <- apply(mat_pk[1:lg,],2, median)  # calcul des medianes
-    mat_pk[lg+3,] <- apply(mat_pk[1:lg,],2, sd)      # calcul des écart-types
+    mat_pk[lg+1,] <- apply(mat_pk[1:lg,],2, mean, na.rm = TRUE)    # calcul des moyennes
+    mat_pk[lg+2,] <- apply(mat_pk[1:lg,],2, median, na.rm = TRUE)  # calcul des medianes
+    mat_pk[lg+3,] <- apply(mat_pk[1:lg,],2, sd, na.rm = TRUE)      # calcul des écart-types
     ls_pk[[i]] <- as.data.frame(mat_pk)
-    align_pk[i,] <- c(mat_pk["sd",5],mat_pk["sd",6],i,mat_pk["mean",5]) # un resumé pour après
+    align_pk[i,] <- c(mat_pk["sd",5],mat_pk["mean",6],i,mat_pk["mean",5]) # un resumé pour après
   }
 
   # detection du pic pivot pour l'alignement
-  align_pk <- align_pk[which(align_pk[,2]==0),]  # suppresion des pics non detectés partout
+  align_pk <- align_pk[which(align_pk[,2]==1),]  # suppresion des pics non detectés partout
   num_pk_align <- align_pk[which.min(align_pk[,1]),"num"] # le pic le mieux aligné
 
   # detection des index pour chaque echantillon
@@ -609,8 +773,9 @@ gcead.merge <- function(..., gcead_names = FALSE, RT_limits = NULL,
     EAD[i,] <- list_gcead[[i]]@GC_EAD$EAD[coor_mat[,i]] # centré sur le pic pivot
     FID[i,] <- list_gcead[[i]]@GC_EAD$FID[coor_mat[,i]] # centré sur le pic pivot
     mTime[i,] <- list_gcead[[i]]@GC_EAD$time[coor_mat[,i]] # centré sur le pic pivot
-    maxFID[i] <- min(list_pk[[i]][,6])*max(list_pk[[i]][,2]) # ne prend que les FID qui n'ont pas saturé
+    maxFID[i] <- min(list_pk[[i]][,6], na.rm = TRUE)*max(list_pk[[i]][,2],na.rm = TRUE) # ne prend que les FID qui n'ont pas saturé
   }
+  if(sum(maxFID)==0) maxFID <- lapply(list_pk, function(x) max(x[,4])) %>% unlist()
 
   # gestion du temps
   mTime <- colMeans(mTime) %>% round(5) # un seul temps
@@ -627,7 +792,7 @@ gcead.merge <- function(..., gcead_names = FALSE, RT_limits = NULL,
   pk_mat <- new(Class = "mead",
                 EAD = as.data.frame(EAD),
                 time = mTime,
-                FID = FID[which.max(maxFID),], # un seul FID
+                FID = FID[which.max(maxFID),]*gap_FID, # un seul FID
                 delay = sapply(list_gcead, function(X) return(X@delay)),
                 file = sapply(list_gcead, function(X) return(X@file)),
                 num = sapply(list_gcead, function(X) return(X@num)),
@@ -637,6 +802,10 @@ gcead.merge <- function(..., gcead_names = FALSE, RT_limits = NULL,
   pk_mat <- pretreatment.mead(pk_mat, wsm = width_smooth, snr_pk_FID = snr_pk_fid,
                               wm_bl_FID = wm_bl_fid, ws_bl_FID = ws_bl_fid,
                               th_pk_FID = th_pk_fid, hws_pk_FID = hws_pk_fid)
+
+  pk_mat@param <- c(pk_mat@param, gap_FID)
+  names(pk_mat@param)[length(pk_mat@param)] <- "gap_FID"
+
   return(pk_mat)
 }
 
@@ -808,12 +977,20 @@ m.EAD.norm <- function(shift = -1, amplitude = NA, overlay = TRUE, pk_mat = list
   if(overlay == TRUE) shift <- shift*(1:ncol(EAD))
   pk_mat@EAD <- t(EAD) %>% add(shift) %>% t() %>% as.data.frame()
 
+  #maj param
+  pk_mat@param <- c(pk_mat@param, shift[1])
+  names(pk_mat@param)[length(pk_mat@param)] <- "shift"
+
+  pk_mat@param <- c(pk_mat@param, amplitude[1])
+  names(pk_mat@param)[length(pk_mat@param)] <- "amplitude"
+
   return(pk_mat)
 }
 
 #' delete multi-EAD baseline
 #'
 #' @param cr_shift for shift the EAD signals
+#' @param double_baseline make a second subtraction of baseline
 #' @param pk_mat a mead object
 #'
 #' @return a mead object
@@ -821,18 +998,20 @@ m.EAD.norm <- function(shift = -1, amplitude = NA, overlay = TRUE, pk_mat = list
 #'
 #' @examples
 #' # list_ead <- m.EAD.baseline(shift = -0.1)
-m.EAD.baseline <- function(cr_shift = -0.1, pk_mat = list_ead){
+m.EAD.baseline <- function(cr_shift = -0.1, double_baseline = FALSE, pk_mat = list_ead){
   # check ####
   if (class(pk_mat)[1] != "mead") stop("'pk_mat' must be a mead S4 object")
   if (!is.numeric(cr_shift)) stop("'cr_shift' must be a numeric")
 
-  # create a baseline
+  # create new empty matrix
   pk_mat@bl_EAD <- pk_mat@EAD
   colnames(pk_mat@bl_EAD) <- str_replace_all(colnames(pk_mat@bl_EAD),"raw_","bl_")
   pk_mat@cr_EAD <- pk_mat@EAD
   colnames(pk_mat@cr_EAD) <- str_remove_all(colnames(pk_mat@EAD),"raw_")
 
+  # first baseline
   for (j in 1:ncol(pk_mat@EAD)){ # j = 1
+    # create a baseline
     for (i in 1:ncol(pk_mat@peak)){ # i = 10
       xbm <- pk_mat@peak[2:3,i]
       ybm <- pk_mat@EAD[xbm,j]
@@ -845,9 +1024,82 @@ m.EAD.baseline <- function(cr_shift = -0.1, pk_mat = list_ead){
       pk_mat@bl_EAD[xbm[1]:xbm[2],j] <- aff[xbm[1]:xbm[2]]
     }
 
+    # bl <- savgol(pk_mat@bl_EAD[,j], fl = 701)
+    #
+    # df_raw <- data.frame(abs = pk_mat@time ,EAD = pk_mat@EAD[,j], bl_raw = pk_mat@bl_EAD[,j], bl = bl)
+    #
+    # fig <- plot_ly(df_raw, x = ~abs, y = ~EAD, name = "cr", type = 'scatter', mode = 'lines')
+    # fig <- fig %>% add_trace(y= ~bl_raw, name = 'bl', mode = 'lines')
+    # fig <- fig %>% add_trace(y= ~bl, name = 'bl', mode = 'lines')
+    # fig
+
     # create the corrected electrogramme
     pk_mat@cr_EAD[,j] <- pk_mat@EAD[,j] - pk_mat@bl_EAD[,j] + cr_shift
   }
+
+  # double baseline
+  if(double_baseline == TRUE){
+    cr_EAD_1 <- pk_mat@cr_EAD
+
+    bl_EAD_2 <- pk_mat@cr_EAD#*0 + cr_shift
+
+    for (j in 1:ncol(pk_mat@EAD)){ # j = 1
+      for (i in 1:ncol(pk_mat@peak)){ # i = 6
+        # limit :
+        xbm <- pk_mat@peak[2:3,i] # pk_mat@time[xbm]
+        # peak center :
+        ybm <- pk_mat@FID[xbm]
+        fmr <- (ybm[2]-ybm[1])/(xbm[2]-xbm[1])
+        fmr[2] <- ybm[1]-fmr[1]*xbm[1]
+        abs <- 1:length(pk_mat@time)
+        aff <- abs*fmr[1]+fmr[2]
+
+        fmr <- pk_mat@FID[xbm[1]:xbm[2]] - aff[xbm[1]:xbm[2]]
+        appex <- xbm[1] + which.max(fmr) - 1 # pk_mat@time[appex]
+
+        # detect min inf
+        xbm[1] <- xbm[1]+which.max(pk_mat@cr_EAD[xbm[1]:appex,j])-1
+        # detect min sup
+        xbm[2] <- appex+which.max(pk_mat@cr_EAD[appex:xbm[2],j])-1
+                                                      ## pk_mat@time[xbm]
+
+        # calcul affine fonction
+        ybm <- pk_mat@cr_EAD[xbm,j]
+        tbm <- pk_mat@time[xbm]
+
+        fmr <- (ybm[2]-ybm[1])/(xbm[2]-xbm[1])
+        fmr[2] <- ybm[1]-fmr[1]*xbm[1]
+        abs <- 1:length(pk_mat@time)
+        aff <- abs*fmr[1]+fmr[2]
+        bl_EAD_2[xbm[1]:xbm[2],j] <- aff[xbm[1]:xbm[2]]
+      }
+      # create the corrected electrogramme
+      pk_mat@cr_EAD[,j] <- pk_mat@cr_EAD[,j] - bl_EAD_2[,j] + cr_shift
+    }
+
+    cr_EAD_2 <- pk_mat@cr_EAD
+    df_cr <- data.frame(abs = pk_mat@time,
+                        cr_1 = apply(cr_EAD_1,1,mean),
+                        cr_2 = apply(cr_EAD_2,1,mean),
+                        fid = pk_mat@FID,
+                        fid_wd = pk_mat@pk_windows)
+
+    fig <- plot_ly(df_cr, x = ~abs, y = ~cr_1, name = "cr_1", type = 'scatter', mode = 'lines')
+    fig <- fig %>% add_trace(y= ~cr_2, name = 'cr_2', mode = 'lines')
+    fig <- fig %>% add_trace(y= ~fid, name = 'fid', mode = 'lines')
+    fig <- fig %>% add_trace(y= ~fid_wd, name = 'fid_wd', mode = 'lines')
+    print(fig)
+
+  } # double_baseline = TRUE
+
+  fmr <- sapply(c("_ave","_med","_sd"), grep, names(pk_mat@cr_EAD)) %>% unlist()
+  if(length(fmr)==0) fmr = ncol(pk_mat@EAD) + 1  # pour ne supprimer aucune colonne
+  pk_mat@EAD$raw_EAD_sd <- apply(pk_mat@EAD[,-fmr], 1, sd)
+  pk_mat@bl_EAD$bl_EAD_sd <- apply(pk_mat@bl_EAD[,-fmr], 1, sd)
+  pk_mat@cr_EAD$EAD_sd <- apply(pk_mat@cr_EAD[,-fmr], 1, sd)
+
+  pk_mat@param <- c(pk_mat@param, cr_shift)
+  names(pk_mat@param)[length(pk_mat@param)] <- "cr_shift"
 
   return(pk_mat)
 }
@@ -876,7 +1128,7 @@ m.EAD.average <- function(pk_mat = list_ead, treatment = c("mean","median"),
   if (!length(shift) == 1) stop("The length of 'shift' must be egal at one. Use 'overlay'")
 
   # suffixe
-  suf <- c("_ave","_med")
+  suf <- c("_ave","_med","_sd")
   suffixe <- suf[grep(treatment[1], c("mean","median"))]
   fmr <- grep(suffixe, colnames(pk_mat@EAD))
   if(length(fmr) > 0){
@@ -900,12 +1152,20 @@ m.EAD.average <- function(pk_mat = list_ead, treatment = c("mean","median"),
   # mean
   if(treatment[1] == "mean"){
     pk_mat@EAD <- apply(mat,1,mean) %>% add(shift) %>% cbind(.,pk_mat@EAD)
-    pk_mat@cr_EAD <- apply(pk_mat@cr_EAD,1,mean) %>% cbind(.,pk_mat@cr_EAD)
+    pk_mat@cr_EAD <- apply(pk_mat@cr_EAD[,indS],1,mean) %>% cbind(.,pk_mat@cr_EAD)
+
+    SD <- pk_mat@cr_EAD$EAD_sd + 10^-9
+    fmr <- pk_mat@cr_EAD[which(pk_mat@pk_windows == 0)[1],1]
+    pk_mat@cr_EAD$EAD_snr_ave <- -(pk_mat@cr_EAD[,1]-fmr)/SD
   }
   # median
   if(treatment[1] == "median"){
     pk_mat@EAD <- apply(mat,1,median) %>% add(shift) %>% cbind(.,pk_mat@EAD)
-    pk_mat@cr_EAD <- apply(pk_mat@cr_EAD,1,median) %>% cbind(.,pk_mat@cr_EAD)
+    pk_mat@cr_EAD <- apply(pk_mat@cr_EAD[,indS],1,median) %>% cbind(.,pk_mat@cr_EAD)
+
+    SD <- pk_mat@cr_EAD$EAD_sd + 10^-9
+    fmr <- pk_mat@cr_EAD[which(pk_mat@pk_windows == 0)[1],1]
+    pk_mat@cr_EAD$EAD_snr_med <- -(pk_mat@cr_EAD[,1]-fmr)/SD
   }
 
   # suffixe
@@ -929,6 +1189,102 @@ m.EAD.average <- function(pk_mat = list_ead, treatment = c("mean","median"),
   }
 
   return(pk_mat)
+}
+
+# 06 Mesurement ####
+
+#' return information on peaks, amplitude, position, time of depolarisation, SNR
+#'
+#' @param pk_mat
+#'
+#' @return a matrix
+#' @export
+#'
+#' @examples
+#' # depol_param <- pk.measure(list_ead)
+pk.measure <- function(pk_mat = list_ead){ # pk_mat = list_test
+
+  # check #
+  if (class(pk_mat)[1] != "mead") stop("'pk_mat' must be a mead S4 object")
+
+  # smart baseline
+  bl <- pk_mat@cr_EAD*0 + pk_mat@param["cr_shift"]
+
+  depol_param <- list()
+
+  for (j in 1:ncol(pk_mat@cr_EAD)){ # j = 1 " names(pk_mat@cr_EAD)
+    depol_param[[j]] <- matrix(NA,7,ncol(pk_mat@peak),
+                               dimnames = list(c("ind_inf","ind_sup",
+                                                 "Tinf","Tsup",
+                                                 "Tdepol_min","Tdepol_sec",
+                                                 "Idepol"),
+                                               names(pk_mat@peak)))
+    for (i in 1:ncol(pk_mat@peak)){ # i = 10
+
+      # limit :
+      xbm <- pk_mat@peak[2:3,i]
+      # peak center :
+      ybm <- pk_mat@FID[xbm]
+      fmr <- (ybm[2]-ybm[1])/(xbm[2]-xbm[1])
+      fmr[2] <- ybm[1]-fmr[1]*xbm[1]
+      abs <- 1:length(pk_mat@time)
+      aff <- abs*fmr[1]+fmr[2]
+
+      fmr <- pk_mat@FID[xbm[1]:xbm[2]] - aff[xbm[1]:xbm[2]]
+      appex <- xbm[1] + which.max(fmr) - 1
+
+      # detect max inf
+      xbm[1] <- xbm[1]+which.max(pk_mat@cr_EAD[xbm[1]:appex,j])-1
+
+      # detect min sup
+      xbm[2] <- appex+which.max(pk_mat@cr_EAD[appex:xbm[2],j])-1
+
+      # calcul affine fonction
+      ybm <- pk_mat@cr_EAD[xbm,j]
+      tbm <- pk_mat@time[xbm]
+
+      fmr <- (ybm[2]-ybm[1])/(xbm[2]-xbm[1])
+      fmr[2] <- ybm[1]-fmr[1]*xbm[1]
+      abs <- 1:length(pk_mat@time)
+      aff <- abs*fmr[1]+fmr[2]
+      bl[xbm[1]:xbm[2],j] <- pk_mat@cr_EAD[xbm[1]:xbm[2],j] - aff[xbm[1]:xbm[2]] + pk_mat@param["cr_shift"]
+
+      fmr <- c(pk_mat@time[xbm[1]],pk_mat@time[xbm[2]])
+      depol_param[[j]][,i] <- c(xbm,fmr,diff(fmr),diff(fmr)*60,min(bl[xbm[1]:xbm[2],j]))
+    }
+  }
+
+  names(depol_param) <- names(pk_mat@cr_EAD) %>% str_remove_all("EAD_")
+  if(length(grep("snr",names(depol_param))) > 0) depol_param <- depol_param[-grep("snr",names(depol_param))]
+
+  if((length(which(names(depol_param) == "ave")))&(length(which(names(pk_mat@cr_EAD) == "EAD_snr_ave")))){
+    dp <- rbind(depol_param[[which(names(depol_param) == "ave")]],NA)
+    rownames(dp)[8] <- "SNR"
+    for (i in 1:ncol(pk_mat@peak)) dp[8,i] <- max(pk_mat@cr_EAD$EAD_snr_ave[dp[1,i]:dp[2,i]])
+    depol_param[[which(names(depol_param) == "ave")]] <- dp
+  }
+
+  if((length(which(names(depol_param) == "med")))&(length(which(names(pk_mat@cr_EAD) == "EAD_snr_med")))){
+    dp <- rbind(depol_param[[which(names(depol_param) == "med")]],NA)
+    rownames(dp)[8] <- "SNR"
+    for (i in 1:ncol(pk_mat@peak)) dp[8,i] <- max(pk_mat@cr_EAD$EAD_snr_ave[dp[1,i]:dp[2,i]])
+    depol_param[[which(names(depol_param) == "med")]] <- dp
+  }
+
+  depol_param <- lapply(depol_param,round,digits = 3)
+
+  # df <- data.frame(abs = pk_mat@time ,
+  #                  cr = pk_mat@cr_EAD[,1],
+  #                  bl = bl[,1],
+  #                  fid = pk_mat@FID*0.01,
+  #                  wdw = pk_mat@pk_windows*0.01)
+  # fig <- plot_ly(df, x = ~abs, y = ~cr, name = "cr", type = 'scatter', mode = 'lines')
+  # fig <- fig %>% add_trace(y = ~bl, name = 'bl', mode = 'lines')
+  # fig <- fig %>% add_trace(y = ~fid, name = 'fid', mode = 'lines')
+  # fig <- fig %>% add_trace(y = ~wdw, name = 'wdw', mode = 'lines')
+  # fig
+
+  return(depol_param)
 }
 
 # 40 S4 section ####

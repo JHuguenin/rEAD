@@ -6,14 +6,15 @@
 \usage{
 gcead.merge(
   ...,
-  gcead_names = FALSE,
+  gcead_names = TRUE,
   RT_limits = NULL,
   width_smooth = 125,
   wm_bl_fid = 400,
   ws_bl_fid = 10,
   th_pk_fid = 0.01,
   hws_pk_fid = 10,
-  snr_pk_fid = 0.5
+  snr_pk_fid = 0.5,
+  gap_FID = 1
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ gcead.merge(
 \item{hws_pk_fid}{numeric, half window size for MALDIquant::detectPeaks}
 
 \item{snr_pk_fid}{single numeric value for MALDIquant::detectPeaks. SNR is an abbreviation for signal-to-noise-ratio. A local maximum has to be higher than SNR*noise to be recognize as peak.}
+
+\item{gap_FID}{numeric. Multiplied intensity of FID signal.}
 }
 \value{
 

@@ -11,7 +11,11 @@ import.GC.EAD(
   delay = 0,
   skip_time = 6,
   FID_calibration = NULL,
-  param = c(40, 7, 20, 7)
+  param = c(40, 7, 20, 7),
+  skip_pk_cal_GCEAD = NA,
+  skip_pk_cal_FID = NA,
+  save_fid_cal = TRUE,
+  FID_cal = -10^6
 )
 }
 \arguments{
@@ -28,6 +32,14 @@ import.GC.EAD(
 \item{FID_calibration}{calibration file}
 
 \item{param}{parameters of EAD HalfWindowsSize, EAD SNR, FID HalfWindowsSize and FID SNR}
+
+\item{skip_pk_cal_GCEAD}{numeric. Skip peak, higher in first, during the calibration phase.}
+
+\item{skip_pk_cal_FID}{numeric. Skip peak, higher in first, during the calibration phase.}
+
+\item{save_fid_cal}{logical. Save the plot html of calibration transfert from FID to syntech format}
+
+\item{FID_cal}{numeric. Value depend of window width filter for calibration transfert}
 }
 \value{
 a gcead object with spectra and metadata

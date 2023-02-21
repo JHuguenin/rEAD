@@ -4,14 +4,27 @@
 \alias{mead.graph}
 \title{print mead object}
 \usage{
-mead.graph(pk_mat = list_ead, view_all = TRUE, save_htlm = FALSE)
+mead.graph(
+  pk_mat = list_ead,
+  view_raw = TRUE,
+  view_selection = c("all"),
+  view_snr = FALSE,
+  save_htlm = FALSE,
+  prefixe = ""
+)
 }
 \arguments{
 \item{pk_mat}{a mead object with spectra and metadata}
 
-\item{view_all}{logical. Add raw EAD if TRUE}
+\item{view_raw}{logical. Add raw EAD if TRUE}
+
+\item{view_selection}{characters. Selected samples or treatments. Argument can be unique (="all") or multiple (= c("mean","median")).}
+
+\item{view_snr}{logical. view the SNR (signal noise ratio) associted with mean or median.}
 
 \item{save_htlm}{logical. save the graphe in 'Figures' folder}
+
+\item{prefixe}{characters. A prefixe for the title}
 }
 \value{
 a dynamic graph
