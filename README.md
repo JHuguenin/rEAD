@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# rEAD
+# rEAD <a href='https://github.com/JHuguenin/rEAD'><img src="https://raw.githubusercontent.com/JHuguenin/rEAD/master/inst/img/rEAD_logo.png" align="right" height="138"/></a>
 
 <!-- badges: start -->
 <!-- badges: end -->
