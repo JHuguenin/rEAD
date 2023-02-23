@@ -49,6 +49,30 @@ NULL
 
 #' Import data
 #'
+#' La fonction importe le file_csv correspondant a la sorti csv de l'instrument
+#' de syntech. Le signal EAD est en colonne 3 et le signal FID en colonne 4. Si
+#' delay est precise, le signal EAD est decale d'autant de pixel.
+#'
+#' Le signal FID du syntech est bien souvent sature pour les pics les plus intenses.
+#' Cela oblige a mettre en place plusieurs etapes pour corriger le probleme.
+#' Premierement, il faut rehausse le signal pour que la ligne de base (la mediane)
+#' soit superieur a zero. Puis il faut ramener les parties tronquees a l'intensite maximum.
+#'
+#' Ceci fait, la partie FID est chargee. Il y a quatre colonnes le temps en ms,
+#' en min, le RI et le FID. Si skip_time est precise, le debut du FID est tronque
+#' dans cette partie.
+#'
+#' Suite a ça, les cinq pics les plus intenses qui ne sont pas satures sont detectes
+#' sur le signal FID de Syntech (GC-EAD). Les cinq meme pics sont detectes sur le
+#' signal FID d'agilent. Cela permet de passer a la phase de d'etalonnage afin de
+#' synchroniser l'echelle de temps avec le signal EAD de syntech.
+#'
+#' Enfin, le signal du FID d'agilent est recalcule pour avoir le meme nombre de
+#' point que le signal EAD de syntech.
+#' Dans une derniere partie, les pics sont recalcule et les donnees misent en forme
+#' pour obtenir un seul objet de classe gcead.
+#'
+#'
 #' @param file_csv name of the file to be imported
 #' @param num the spectrum number. Only if several spectra have been concatenated to a single file
 #' @param wd working directory
@@ -98,6 +122,7 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   if(delay > 0) gcead$EAD[(delay+1):nrG] <- gcead$EAD[1:(nrG-delay)]
   if(delay < 0) gcead$EAD[1:(nrG+delay)] <- gcead$EAD[(1-delay):nrG]
 
+  # FID saturation corection ####
   # corrected by the median
   if(median(gcead$FID) <0) gcead$FID <- gcead$FID + abs(median(gcead$FID))*1.2
 
@@ -106,11 +131,11 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   ind_sat <- unique(c(fmr,fmr-20, fmr+20)) %>% sort()
   gcead$FID[which(gcead$FID <0)] <- max(gcead$FID)*0.99
 
-  # scale EAD and FID
-  gcead <- scale(gcead) %>% as.data.frame()
+  # # scale EAD and FID
+  # gcead <- scale(gcead) %>% as.data.frame()
 
   # import FID calibration ####
-  fid <- read.csv(FID_calibration)
+  fid <- read.csv(paste0(wd,"/",FID_calibration))
 
   colnames(fid) <- c("time_ms","time","RI","FID")
   nrF <- nrow(fid)
@@ -168,22 +193,22 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   tiff(paste0(wd,"/figures/", title_nm,"n",num,".tiff"), width = 600, height = 900, units = "px", res=NA)
    par(mfrow=c(3,1), oma = c(0,0,2,0), mar = c(3,3,2,0), mgp = c(2,0.5,0),
        cex = 1.5)
-  matplot(fid$time[xFid],vF, type ="l",main = "calibrated FID",
-          xlab = "time (min)", ylab = "intensity (u.a.)")
-  points(fid$time[(lowlimF-1)+pkFID@mass[top_pkF]],pkFID@intensity[top_pkF],
-         pch=16,col="blue")
-  mtext(text = paste(title_file,"n#",num), side = 3,line = 2.5, cex = 2)
+      matplot(fid$time[xFid],vF, type ="l",main = "calibrated FID",
+              xlab = "time (min)", ylab = "intensity (u.a.)")
+      points(fid$time[(lowlimF-1)+pkFID@mass[top_pkF]],pkFID@intensity[top_pkF],
+             pch=16,col="blue")
+      mtext(text = paste(title_file,"n#",num), side = 3,line = 2.5, cex = 2)
 
-  matplot(xEad, vG, type ="l",main = "uncalibrated GC-EAD",
-          xlab = "index", ylab = "intensity (u.a.)")
-  points(xEad[1]+pkGC$mass[top_pkG]-1,pkGC$intensity[top_pkG],pch=16,col="red")
+      matplot(xEad, vG, type ="l",main = "uncalibrated GC-EAD",
+              xlab = "index", ylab = "intensity (u.a.)")
+      points(xEad[1]+pkGC$mass[top_pkG]-1,pkGC$intensity[top_pkG],pch=16,col="red")
 
-  rX <- range(fid$time[(nrF/3):nrF])
-  rY <- c(median(gcead$FID),max(pkGC$intensity))
-  matplot(gcead$time,gcead$FID, type ="l",main = "calibrated GC-EAD",
-          xlab = "time (min)", ylab = "intensity (u.a.)", xlim = rX, ylim = rY)
-  points(gcead$time[xEad[2]+pkGC$mass[top_pkG]],pkGC$intensity[top_pkG]+min(vGn),
-         pch=16,col="green")
+      rX <- range(fid$time[(nrF/3):nrF])
+      rY <- c(median(gcead$FID),max(pkGC$intensity))
+      matplot(gcead$time,gcead$FID, type ="l",main = "calibrated GC-EAD",
+              xlab = "time (min)", ylab = "intensity (u.a.)", xlim = rX, ylim = rY)
+      points(gcead$time[xEad[2]+pkGC$mass[top_pkG]],pkGC$intensity[top_pkG]+min(vGn),
+             pch=16,col="green")
   dev.off()
 
   # FID calibration transfert ####
@@ -221,10 +246,10 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   }
 
   # scale new FID
-  X0 <- scale(X0)
+  X0 <- X0*10/max(X0)
   gcead$FID <- as.numeric(X0) - min(X0)
 
-  # recalc peaks
+  # recalc peaks ####
   pkGC <- createMassSpectrum(1:nrG, gcead$FID)
   pkGC <- detectPeaks(pkGC, halfWindowSize = param[3], method = "MAD", SNR = param[4])
   pkGC <- data.frame(mass = pkGC@mass,intensity =  pkGC@intensity)

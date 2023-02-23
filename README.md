@@ -1,28 +1,17 @@
----
-output: github_document
----
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
-
-```{r, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  fig.path = "man/figures/README-",
-  out.width = "100%"
-)
-```
 
 # rEAD
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-rEAD is a R package for import and analyse GC-EAD data. 
+rEAD is a R package for import and analyse GC-EAD data.
 
 ## Installation
 
-You can install the development version of rEAD from [GitHub](https://github.com/) with:
+You can install the development version of rEAD from
+[GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("devtools")
@@ -33,7 +22,7 @@ devtools::install_github("JHuguenin/rEAD")
 
 This is a basic example which shows you how to solve a common problem:
 
-```{r example, eval = FALSE}
+``` r
 library(rEAD)
 
 ## gestion de repertoir de travail # 
@@ -96,8 +85,4 @@ mead.graph(list_test, view_raw =  FALSE, view_snr = TRUE)
 ## measure #
 depol_param <- pk.measure(list_test)  # calcul des intensites et de la duree de depolarisation des pics EAD
 # View(depol_param[[1]])
-
 ```
-
-
-

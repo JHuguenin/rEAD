@@ -45,7 +45,29 @@ import.GC.EAD(
 a gcead object with spectra and metadata
 }
 \description{
-Import data
+La fonction importe le file_csv correspondant a la sorti csv de l'instrument
+de syntech. Le signal EAD est en colonne 3 et le signal FID en colonne 4. Si
+delay est precise, le signal EAD est decale d'autant de pixel.
+}
+\details{
+Le signal FID du syntech est bien souvent sature pour les pics les plus intenses.
+Cela oblige a mettre en place plusieurs etapes pour corriger le probleme.
+Premierement, il faut rehausse le signal pour que la ligne de base (la mediane)
+soit superieur a zero. Puis il faut ramener les parties tronquees a l'intensite maximum.
+
+Ceci fait, la partie FID est chargee. Il y a quatre colonnes le temps en ms,
+en min, le RI et le FID. Si skip_time est precise, le debut du FID est tronque
+dans cette partie.
+
+Suite a ça, les cinq pics les plus intenses qui ne sont pas satures sont detectes
+sur le signal FID de Syntech (GC-EAD). Les cinq meme pics sont detectes sur le
+signal FID d'agilent. Cela permet de passer a la phase de d'etalonnage afin de
+synchroniser l'echelle de temps avec le signal EAD de syntech.
+
+Enfin, le signal du FID d'agilent est recalcule pour avoir le meme nombre de
+point que le signal EAD de syntech.
+Dans une derniere partie, les pics sont recalcule et les donnees misent en forme
+pour obtenir un seul objet de classe gcead.
 }
 \examples{
 # phase 1

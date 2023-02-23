@@ -1,7 +1,7 @@
 Package: rEAD
 Type: Package
 Title: analyze data from GC-EAD
-Version: 0.1.0
+Version: 1.0.0
 Authors@R: 
     person(given = "Joris",
            family = "Huguenin",
@@ -10,7 +10,7 @@ Authors@R:
 Organization: CEFE, University of Montpellier
 Address: Montpellier, France
 Packaged: 2023-01-03; huguenin
-Description: The rEAD package allows import, pretraitement and tools for analyze data of GC-EAD 
+Description: The rEAD package allows import, pretraitement and tools for analyze data of GC-EAD.
 Date/Publication: 2022-06-14
 License: GPL-3
 Encoding: UTF-8
@@ -24,6 +24,7 @@ Imports:
     magrittr (>= 2.0.0),
     MALDIquant (>= 1.19.0),
     methods (>= 4.0.5),
+    plotly (>= 4.10.0),
     pracma (>= 2.3.8),
     RColorBrewer (>= 1.1),
     rmarkdown (>= 2.11.0),
