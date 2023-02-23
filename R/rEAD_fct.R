@@ -190,7 +190,7 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
   fmr <- str_split(title_file,pattern = "/")[[1]]
   title_nm <- fmr[length(fmr)]
 
-  tiff(paste0(wd,"/figures/", title_nm,"n",num,".tiff"), width = 600, height = 900, units = "px", res=NA)
+  tiff(paste0(wd,"/figures/", title_nm,"_n",num,".tiff"), width = 600, height = 900, units = "px", res=NA)
    par(mfrow=c(3,1), oma = c(0,0,2,0), mar = c(3,3,2,0), mgp = c(2,0.5,0),
        cex = 1.5)
       matplot(fid$time[xFid],vF, type ="l",main = "calibrated FID",

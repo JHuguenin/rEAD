@@ -18,9 +18,40 @@ You can install the development version of rEAD from
 devtools::install_github("JHuguenin/rEAD")
 ```
 
-## Example
+## Utilisation
 
-This is a basic example which shows you how to solve a common problem:
+Les deux premieres etapes, “Import” et “Regroupement” d’echantillons,
+doivent etre effectue selon la metodologie suivante. Les etapes
+d’analyses sont propres a chaque cas.
+
+### Import
+
+Le package rEAD est conçu pour importer et traiter les donnees GC-EAD du
+setup du CEFE (UMR 5175) de Montpellier. Ce setup est compose d’un GC
+couple a un FID de la marque Agilent ainsi qu’un EAD de la marque
+Syntech. Les donnees recuperees de l’instruments FID sont composees de
+deux vecteurs, l’un represente le spectre FID et l’autre le temps de
+retention. Les donnees de l’EAD sont composees de deux vecteurs, l’un
+representant le spectre FID et l’autre l’electroantennogramme EAD. Ces
+vecteurs ne sont pas indexes sur le temps. Les deux spectres FID
+respectifs permettent d’effectuer l’alignement et l’etalonnage. Trois
+difficultes supplementaire s’ajoutent a l’analyse : - les deux doublets
+de vecteurs n’ont pas la meme frequence d’etalonnage. - les pics tres
+intenses du spectre FID de syntech sont souvent satures en intensite. -
+il y a un decalage temporel entre le signal EAD et FID des donnes issus
+de l’instrument syntech.
+
+Les donnes sont stockes dans deux fichiers separes nommes “xxx\_EAD.csv”
+et xxx\_FID.csv“. Chaque echantillon doit avoir le meme prefixe”xxx"
+afin de synchroniser les deux fichiers. Bien entendu, deux echantillons
+doivent avoir des prefixes “xxx” differents.
+
+La premiere etape consiste a importer le fichier issu de Syntech. Si le
+fichier issu du FID d’Agilent ne peut pas s’appeller “xxx\_FID.csv” ou
+n’est pas dans le meme dossier que le fichier “xxx\_EAD.csv”, utilisez
+l’arguement “FID\_calibration” pour preciser son nom ou sa localisation.
+Si le fichier EAD est compose de plusieurs fichiers concatenes, utilisez
+num pour specifier l’echantillon importe.
 
 ``` r
 library(rEAD)
@@ -30,50 +61,128 @@ wd = "C:/Users/huguenin/Documents/R/rEAD_moustiques" # working directory
 setwd(wd)  # changement du repertoire dans R
 
 ## 1er import #
-a04 <- import.GC.EAD(file_csv = "data/2023-01-25_hela_aedes04_Speed_025_split4_20Hz_EAD.csv")
-# check la figure dynamique + la figure de calibration dans ~/figures
-gcead.graph(a04)
+a01 <- import.GC.EAD(file_csv = "data/sample_01_EAD.csv")
+```
 
+L’objet a01 est un objet S4 de type gcead. En parrallelle, un fichier
+‘figures’ est creer dans votre espace de travail. Il comprend pour le
+moment uniquement deux figures : - celle au format tiff permet de
+verifier si la synchronisite entre les vecteurs FID issus des deux
+instruments a fonctionner. Les 5 pics marques doivent correspondre sur
+les deux figures superieurs. Si ce n’est pas bon, utiliser les arguments
+*skip\_pk\_cal\_GCEAD* et *skip\_pk\_cal\_FID* pour corriger cela en
+ignorant certains pics ou *param* pour jouer sur les parametres de
+detection de pics.  
+- celle au format html permet de verifier si le transfert d’etalonnage
+est correct. La courbe orange doit correctement se superposer a la
+courbe bleu. Si ce n’est pas bon, utiliser l’argument *FID\_cal* pour
+corriger.
+
+Une fois cela regler, il faut corriger le temps de decalage entre le
+signal FID et EAD. Generez une figure dynamique a l’aide de la fonction
+:
+
+``` r
+# check la figure dynamique + la figure de calibration dans ~/figures
+gcead.graph(a01)
+```
+
+Sur quelques pics, reperez les maximums sur le signal FID et EAD puis
+utilisez la fonction *recalc.delay()*. Indiquez ce delais dans vos
+imports suivant :
+
+``` r
 ## calcul du decalage entre les deux FID #
-recalc.delay(pk_EAD = 8.09559, pk_FID = 8.1579,pk_mat = a04) # 374
-recalc.delay(pk_EAD = 9.64715, pk_FID = 9.703967,pk_mat = a04) # 341
-recalc.delay(pk_EAD = 10.2951, pk_FID = 10.3486,pk_mat = a04) # 321
-recalc.delay(pk_EAD = 10.641198, pk_FID = 10.697349,pk_mat = a04) # 337
+recalc.delay(pk_EAD = 8.09559, pk_FID =  8.1579, pk_mat = a01) # 374
+recalc.delay(pk_EAD = 9.64715, pk_FID =  9.7039, pk_mat = a01) # 341
+recalc.delay(pk_EAD = 10.2951, pk_FID = 10.3486, pk_mat = a01) # 321
+recalc.delay(pk_EAD = 10.6412, pk_FID = 10.6973, pk_mat = a01) # 337
 
 ## importation de tous les echantillons #
-a04 <- import.GC.EAD(file_csv = "data/2023-01-25_hela_aedes04_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a05 <- import.GC.EAD(file_csv = "data/2023-01-25_hela_aedes05_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a07 <- import.GC.EAD(file_csv = "data/2023-01-26_hela_aedes07_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a08 <- import.GC.EAD(file_csv = "data/2023-01-26_hela_aedes08_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a09 <- import.GC.EAD(file_csv = "data/2023-01-26_hela_aedes09_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a10 <- import.GC.EAD(file_csv = "data/2023-01-26_hela_aedes10_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a11 <- import.GC.EAD(file_csv = "data/2023-01-26_hela_aedes11_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a12 <- import.GC.EAD(file_csv = "data/2023-01-26_hela_aedes12_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a14 <- import.GC.EAD(file_csv = "data/2023-01-27_hela_aedes14_Speed_025_split4_20Hz_EAD.csv",delay = 340)
-a15 <- import.GC.EAD(file_csv = "data/2023-01-27_hela_aedes15_Speed_025_split4_20Hz_EAD.csv",delay = 340)
+a01 <- import.GC.EAD(file_csv = "data/sample_01_EAD.csv", delay = 340)
+a02 <- import.GC.EAD(file_csv = "data/sample_02_EAD.csv", delay = 340)
+a03 <- import.GC.EAD(file_csv = "data/sample_03_EAD.csv", delay = 340)
+a04 <- import.GC.EAD(file_csv = "data/sample_04_EAD.csv", delay = 340)
+a05 <- import.GC.EAD(file_csv = "data/sample_05_EAD.csv", delay = 340)
 # regarder les figures comparatives de calibration dans ~/figures
+```
 
+### Regroupement des echantillons
+
+Une fois vos echantillons correctement importes, rassemblez les dans un
+objet mead, pour “multiple EAD”.
+
+``` r
 ## rassembler les echantillons #
-list_test <- gcead.merge(a04, a05, a07, a08, a09, a10, a11, a12, a14, a15, # tous les echantillons importes
-                         gcead_names = c("a04","a05","a07","a08","a09","a10","a11","a12","a14","a15"), # leurs noms reduits
+list_test <- gcead.merge(a01, a02, a03, a04, a05, # tous les echantillons importes
+                         gcead_names = c("a01","a02","a03","a04","a05"), # leurs noms reduits
                          RT_limits = c(6,18), # le temps tronques des parties inutiles
                          gap_FID = 1) # un facteur multiplicatif pour le signal FID
+```
 
+Essentiellement, la fonction *gcead.merge* utilise les signaux FID de
+chaque echantillon pour aligner toutes les donnes. L’argument
+*gcead\_names* permet de simplifier le nom des echantillons. Utilisez
+des noms courts (et sans regex, ou alors ne comptez pas sur moi pour
+venir vous aider). Le *RT\_limits* permet de zoomer directement sur les
+zones d’analyses. Le *gap\_FID* applique un facteur multiplicatif au
+signal FID afin d’augmenter la lisibilite des figures. Plusieus
+parametres detailles dans l’aide permettre d’affinier les pretraitements
+effectues sur les donnees FID. Les donnees peuvent etres visualisees
+grace a la fonction *mead.graph()*.
+
+Enfin, la fonction *m.EAD.norm* permet de mettre en forme les signaux
+EAD pour permettre l’analyse.
+
+``` r
 list_test <- m.EAD.norm(shift = -0.5, amplitude = 5, overlay = FALSE, pk_mat = list_test) # une mise en forme des signaux
+```
 
+### Analyses
+
+Dans un premier temps, le spectre FID doit etre analyse pour voir la
+qualiter des pics detectes. En fonction des situations, vous pouvez
+ajouter, modifier ou supprimer des pics. Vous pouvez egalement ajouter
+un pic si les signaux EAD laissent presager une reponse dans une zone
+sans pic FID detecte.
+
+``` r
 ## modification du pic 11.2268 #
-list_test <- FID.modify.peak(pk = 11.2268, bm_sup = 11.23785, pk_mat = list_test)
-list_test <- FID.create.peak(11.2379, 11.269,pk_mat = list_test)
+list_test <- FID.modify.peak(pk = 11.227, bm_sup = 11.238, pk_mat = list_test)
+list_test <- FID.create.peak(11.238, 11.269,pk_mat = list_test)
 
 ## suppression du pic 9.74254 #
 list_test <- FID.delete.peak(9.74,pk_mat = list_test)
+```
 
+Calculez la ligne de base soit par une simple fonction affine entre les
+deux points de la fenetre du pic FID, soit en ajoutant a cette
+regression une detection supplementaire avec l’arguement
+*double\_baseline = TRUE*. Si cette option est choisie, le script, apres
+avoir supprimer une premiere fois la ligne de base, va detecter l’appex
+du pic FID, puis trouver la position x1 du signal EAD le plus intense
+(i1) situe avant l’appex et la position x2 du signal EAD le plus intense
+(i2) situe apres l’appex. Puis, une nouvelle ligne de base sera calculee
+entre i1 et i2 et soustraite aux points entre i1 et i2 tandis que les
+autres points seront mis a zero.
+
+``` r
 ## baseline et calcule des statistiques #
 list_test <- m.EAD.baseline(cr_shift = -0.05, double_baseline = TRUE, pk_mat = list_test) # baseline
+```
 
+Une fois la ligne de base calculee, la moyenne et la mediane peuvent
+etre calculee a leur tour.
+
+``` r
 list_test <- m.EAD.average(list_test,"mean", shift = -0.5, overlay = TRUE) # calcul de la moyenne
 #list_test <- m.EAD.average(list_test,"median", shift = -0.5, overlay = TRUE) # calcule de la mediane
+```
 
+Les resultats peuvent etre visionnes grace a la fonction *mead.graph()*
+et ses arguements a combiner en fonction des situations.
+
+``` r
 ## graphes #
 mead.graph(list_test, view_raw =  TRUE) # differents graphes
 mead.graph(list_test, view_raw =  FALSE)
@@ -81,8 +190,18 @@ mead.graph(list_test, view_raw =  FALSE, view_selection = "mean")
 mead.graph(list_test, view_raw =  FALSE, view_selection = c("mean","sd"))
 mead.graph(list_test, view_raw =  FALSE, view_selection = c("mean","sd"), view_snr = TRUE)
 mead.graph(list_test, view_raw =  FALSE, view_snr = TRUE)
+```
 
+Enfin, les intensites et temps de depolarisation peuvent etre
+directement calcules
+
+``` r
 ## measure #
 depol_param <- pk.measure(list_test)  # calcul des intensites et de la duree de depolarisation des pics EAD
-# View(depol_param[[1]])
+# View(depol_param[[1]]) pour la moyenne
+# write.csv2(depol_param[[1]], "depol_param.csv") # pour sauvegarder le fichier csv
 ```
+
+Les bonnes idees, les remonter de bugs, les demandes de developpement,
+d’aide ou de colaboration peuvent etre envoyer a l’adresse renseignee
+dans mon profil.
