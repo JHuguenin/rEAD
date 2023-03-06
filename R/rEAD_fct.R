@@ -276,7 +276,12 @@ import.GC.EAD <- function(file_csv = "name.csv", num = 1, wd = NULL, delay = 0,
                               type = "raw"))
 }
 
+
+
 #' allows to recalculate delay between FID and EAD signal
+#'
+#' Indiquer le temps d'un pic EAD ainsi que le temps d'un pic FID. Ces temps
+#' sont indiqué en minutes avec au moins trois décimales.
 #'
 #' @param pk_EAD the time of a depolarizing EAD peak
 #' @param pk_FID the time of a trigger FID peak
@@ -692,6 +697,9 @@ FID.delete.window <- function(X1 = "start", X2 = "end", pk_mat = list_ead){
 # 05 Multiple EAD ####
 
 #' merge a lot of gcead objects in a m(ultiple-gc-)ead
+#'
+#' Cette function est l'une des plus importantes du package. Elle permet de cumuler
+#' les echantillons pour n'obtenir qu'un seul objet de travail.
 #'
 #' @param ... a suit of gcead objects
 #' @param gcead_names a vector with new name (optionnal)

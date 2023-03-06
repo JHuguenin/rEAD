@@ -35,11 +35,14 @@ retention. Les donnees de l’EAD sont composees de deux vecteurs, l’un
 representant le spectre FID et l’autre l’electroantennogramme EAD. Ces
 vecteurs ne sont pas indexes sur le temps. Les deux spectres FID
 respectifs permettent d’effectuer l’alignement et l’etalonnage. Trois
-difficultes supplementaire s’ajoutent a l’analyse : - les deux doublets
-de vecteurs n’ont pas la meme frequence d’etalonnage. - les pics tres
-intenses du spectre FID de syntech sont souvent satures en intensite. -
-il y a un decalage temporel entre le signal EAD et FID des donnes issus
-de l’instrument syntech.
+difficultes supplementaire s’ajoutent a l’analyse :
+
+-   les deux doublets de vecteurs n’ont pas la meme frequence
+    d’etalonnage.  
+-   les pics tres intenses du spectre FID de syntech sont souvent
+    satures en intensite.  
+-   il y a un decalage temporel entre le signal EAD et FID des donnes
+    issus de l’instrument syntech.
 
 Les donnes sont stockes dans deux fichiers separes nommes “xxx\_EAD.csv”
 et xxx\_FID.csv“. Chaque echantillon doit avoir le meme prefixe”xxx"
@@ -66,17 +69,18 @@ a01 <- import.GC.EAD(file_csv = "data/sample_01_EAD.csv")
 
 L’objet a01 est un objet S4 de type gcead. En parrallelle, un fichier
 ‘figures’ est creer dans votre espace de travail. Il comprend pour le
-moment uniquement deux figures : - celle au format tiff permet de
-verifier si la synchronisite entre les vecteurs FID issus des deux
-instruments a fonctionner. Les 5 pics marques doivent correspondre sur
-les deux figures superieurs. Si ce n’est pas bon, utiliser les arguments
-*skip\_pk\_cal\_GCEAD* et *skip\_pk\_cal\_FID* pour corriger cela en
-ignorant certains pics ou *param* pour jouer sur les parametres de
-detection de pics.  
-- celle au format html permet de verifier si le transfert d’etalonnage
-est correct. La courbe orange doit correctement se superposer a la
-courbe bleu. Si ce n’est pas bon, utiliser l’argument *FID\_cal* pour
-corriger.
+moment uniquement deux figures :
+
+-   celle au format tiff permet de verifier si la synchronisite entre
+    les vecteurs FID issus des deux instruments a fonctionner. Les 5
+    pics marques doivent correspondre sur les deux figures superieurs.
+    Si ce n’est pas bon, utiliser les arguments *skip\_pk\_cal\_GCEAD*
+    et *skip\_pk\_cal\_FID* pour corriger cela en ignorant certains pics
+    ou *param* pour jouer sur les parametres de detection de pics.  
+-   celle au format html permet de verifier si le transfert d’etalonnage
+    est correct. La courbe orange doit correctement se superposer a la
+    courbe bleu. Si ce n’est pas bon, utiliser l’argument *FID\_cal*
+    pour corriger.
 
 Une fois cela regler, il faut corriger le temps de decalage entre le
 signal FID et EAD. Generez une figure dynamique a l’aide de la fonction
